@@ -29,3 +29,5 @@ data/
 # Logs, temp files
 *.log
 *.tmp
+
+asl_data_mapped.npz
