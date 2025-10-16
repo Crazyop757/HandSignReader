@@ -1,0 +1,7 @@
+numpy                 # Numerical operations
+opencv-python         # Image loading, resizing, webcam capture
+matplotlib            # Visualizing images and training plots
+scikit-learn          # Label encoding, train/val/test splitting
+tensorflow>=2.10      # CNN model, training, and preprocessing
+keras                 # Optional; often comes with tensorflow
+pillow                # Image handling

@@ -1,0 +1,31 @@
+# Virtual environment
+venv/
+ENV/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Models and large binaries
+models/
+*.h5
+*.ckpt
+*.pt
+*.weights
+
+# Dataset (too large to store in git)
+data/
+
+# Logs, temp files
+*.log
+*.tmp
