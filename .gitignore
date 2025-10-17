@@ -31,3 +31,5 @@ data/
 *.tmp
 
 asl_data_mapped.npz
+
+asl_cnn_savedmodel.keras

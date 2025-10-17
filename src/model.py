@@ -38,7 +38,7 @@ early_stop = keras.callbacks.EarlyStopping(
 history = model.fit(
     X_train, y_train,
     validation_data=(X_val, y_val),
-    epochs=15,
+    epochs=11,
     batch_size=64,
     callbacks=[early_stop]
 )
@@ -46,4 +46,4 @@ history = model.fit(
 val_loss, val_acc = model.evaluate(X_val, y_val)
 print(f"Validation Accuracy: {val_acc*100:.2f}%")
 
-model.save("asl_cnn_savedmodel")
+model.save("asl_cnn_savedmodel.keras")
