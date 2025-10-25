@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 from tensorflow import keras
 from collections import deque
+import time
 
 model = keras.models.load_model("asl_cnn_savedmodel.keras")
 
@@ -17,6 +18,13 @@ mp_draw = mp.solutions.drawing_utils
 
 prediction_buffer = deque(maxlen=10)
 confidence_threshold = 40.0
+
+# Word building variables
+current_word = ""
+current_letter = None
+letter_start_time = None
+HOLD_TIME = 3.0  # seconds to hold before adding to word
+last_added_letter = None
 
 def preprocess_hand_image(hand_roi_rgb):
     h, w = hand_roi_rgb.shape[:2]
@@ -53,7 +61,24 @@ def get_stable_prediction(pred, confidence):
 
 cap = cv2.VideoCapture(0)
 
-print("\nPress 'q' to quit, 'r' to reset prediction buffer")
+print("=" * 60)
+print("ASL Hand Sign Recognition - Word Builder")
+print("=" * 60)
+print("\nHow to use:")
+print(f"1. Hold a sign steady for {HOLD_TIME} seconds to add it to the word")
+print("2. Sign 'space' to add a space")
+print("3. Sign 'del' to delete the last character")
+print("4. Sign 'nothing' to do nothing (pause)")
+print("\nTips for MAXIMUM accuracy:")
+print("- Use a PLAIN, LIGHT background (white wall/paper works best)")
+print("- Ensure GOOD, EVEN lighting on your hand")
+print("- Keep your hand CENTERED and STABLE in the box")
+print("- HOLD the sign STEADY for the full duration")
+print("\nControls:")
+print("- Press 'q' to quit")
+print("- Press 'r' to reset the current word")
+print("- Press 'c' to clear prediction buffer")
+print("=" * 60)
 
 while True:
     ret, frame = cap.read()
@@ -94,6 +119,46 @@ while True:
                 stable_class_id = get_stable_prediction(pred[0], confidence)
                 letter = list(label_map.keys())[list(label_map.values()).index(stable_class_id)]
                 
+                # Word building logic - only for high confidence predictions
+                if confidence > 60:  # Only track high confidence predictions
+                    if letter != "nothing":  # Ignore "nothing" gesture
+                        if current_letter == letter:
+                            # Same letter is being held
+                            elapsed_time = time.time() - letter_start_time
+                            
+                            # Check if held long enough
+                            if elapsed_time >= HOLD_TIME and letter != last_added_letter:
+                                # Add to word
+                                if letter == "space":
+                                    current_word += " "
+                                    print(f"Added: SPACE")
+                                elif letter == "del":
+                                    if len(current_word) > 0:
+                                        removed = current_word[-1]
+                                        current_word = current_word[:-1]
+                                        print(f"Deleted: '{removed}'")
+                                else:
+                                    current_word += letter
+                                    print(f"Added: {letter} -> Current word: '{current_word}'")
+                                
+                                last_added_letter = letter
+                        else:
+                            # New letter detected
+                            current_letter = letter
+                            letter_start_time = time.time()
+                            last_added_letter = None
+                else:
+                    # Low confidence, reset tracking
+                    current_letter = None
+                    letter_start_time = None
+                    last_added_letter = None
+                
+                # Calculate hold progress
+                hold_progress = 0
+                if current_letter == letter and letter_start_time is not None:
+                    elapsed = time.time() - letter_start_time
+                    hold_progress = min(elapsed / HOLD_TIME, 1.0)
+                
                 if confidence > 70:
                     color = (0, 255, 0) 
                 elif confidence > 50:
@@ -110,8 +175,32 @@ while True:
                 cv2.putText(frame, conf_text, (10, 110), cv2.FONT_HERSHEY_SIMPLEX,
                             1.0, color, 2, cv2.LINE_AA)
                 
+                # Show hold progress bar
+                if hold_progress > 0 and letter != "nothing":
+                    bar_width = 300
+                    bar_height = 30
+                    bar_x = 10
+                    bar_y = 140
+                    
+                    # Draw background
+                    cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height), 
+                                (50, 50, 50), -1)
+                    # Draw progress
+                    progress_width = int(bar_width * hold_progress)
+                    progress_color = (0, 255, 0) if hold_progress >= 1.0 else (0, 165, 255)
+                    cv2.rectangle(frame, (bar_x, bar_y), (bar_x + progress_width, bar_y + bar_height), 
+                                progress_color, -1)
+                    # Draw border
+                    cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height), 
+                                (255, 255, 255), 2)
+                    
+                    # Show time remaining
+                    time_remaining = max(0, HOLD_TIME - (time.time() - letter_start_time))
+                    cv2.putText(frame, f"Hold: {time_remaining:.1f}s", (bar_x + bar_width + 10, bar_y + 22), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+                
                 top3_idx = np.argsort(pred[0])[-3:][::-1]
-                y_offset = 160
+                y_offset = 190
                 cv2.putText(frame, "Top 3:", (10, y_offset), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
                 y_offset += 35
@@ -130,18 +219,49 @@ while True:
                 cv2.putText(frame, "Model View", (w-155, 180), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
     else:
+        # No hand detected - reset tracking
         prediction_buffer.clear()
+        current_letter = None
+        letter_start_time = None
+        last_added_letter = None
+        
         cv2.putText(frame, "No hand detected", (10, 60), 
                     cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3, cv2.LINE_AA)
+    
+    # Display the current word at the bottom of the frame
+    h, w, _ = frame.shape
+    
+    # Create a semi-transparent background for the word display
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (0, h-100), (w, h), (0, 0, 0), -1)
+    cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+    
+    # Display the word
+    word_display = current_word if current_word else "[Empty]"
+    cv2.putText(frame, f"Word: {word_display}", (20, h-50), 
+                cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3, cv2.LINE_AA)
+    
+    # Show character count
+    cv2.putText(frame, f"Characters: {len(current_word)}", (20, h-15), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 2, cv2.LINE_AA)
 
-    cv2.imshow("ASL Recognition", frame)
+    cv2.imshow("ASL Recognition - Word Builder", frame)
 
     key = cv2.waitKey(1) & 0xFF
     if key == ord('q'):
         break
     elif key == ord('r'):
+        # Reset the current word
+        current_word = ""
+        current_letter = None
+        letter_start_time = None
+        last_added_letter = None
+        print("Word reset!")
+    elif key == ord('c'):
+        # Clear prediction buffer only
         prediction_buffer.clear()
-        print("Prediction buffer reset!")
+        print("Prediction buffer cleared!")
 
+print(f"\nFinal word: '{current_word}'")
 cap.release()
 cv2.destroyAllWindows()
